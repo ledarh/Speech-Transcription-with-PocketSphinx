@@ -25,6 +25,7 @@ audio_file_path = 'C:/Users/ledar/positions/Transcribe/testf.wav'
 output_file_path = 'C:/Users/ledar/positions/Transcribe/my_transcription.txt'
 
 
+
 recognizer = sr.Recognizer()
 
 # Determine number of chunks
@@ -37,20 +38,6 @@ def calculate_chunk_size(duration):
         return 120  # ~2m/chunk
     else:  # >30 minutes
         return 300  # ~5m/chunk
-
-# Helper: seconds -> x days hh:mm:ss
-def format_time(seconds):
-    days = int(seconds // (24 * 3600))  # Convert to integer to avoid float errors
-    seconds %= (24 * 3600)
-    hours = int(seconds // 3600)  # Convert to integer to avoid float errors
-    seconds %= 3600
-    minutes = int(seconds // 60)  # Convert to integer to avoid float errors
-    seconds = round(seconds % 60)  # Round seconds to the nearest integer
-
-    if days > 0:
-        return f"Estimated remaining: {days} days {hours:02d}:{minutes:02d}:{seconds:02d}"
-    else:
-        return f"Estimated remaining: {hours:02d}:{minutes:02d}:{seconds:02d}"
 
 # Helper to split the audio into smaller chunks based on the duration
 def split_audio(file_path):
@@ -66,9 +53,21 @@ def split_audio(file_path):
             audio_chunk = recognizer.record(source, duration=duration)
             yield audio_chunk, i, num_chunks
 
-# Core function
+# Transcribe a chunk of audio
+def transcribe_chunk(audio_chunk, chunk_index):
+    try:
+        chunk_transcription = recognizer.recognize_sphinx(audio_chunk)
+        return chunk_transcription, chunk_index
+    except sr.UnknownValueError:
+        return f"Chunk {chunk_index + 1}: PocketSphinx could not understand the audio", chunk_index
+    except sr.RequestError as e:
+        return f"Chunk {chunk_index + 1}: Could not request results from PocketSphinx; {e}", chunk_index
+    except Exception as e:
+        return f"Error in chunk {chunk_index + 1}: {e}", chunk_index
+
+# Core function to parallelize transcription
 def transcribe_audio(file_path, output_file_path):
-    transcription = ""
+    transcription = [None] * 100  # Reserve space for chunk transcription (max 100 chunks)
 
     # Initialization information
     with sr.AudioFile(file_path) as source:
@@ -81,46 +80,33 @@ def transcribe_audio(file_path, output_file_path):
     print(f"Transcription will be saved to: {os.path.basename(output_file_path)}")
     print(f"Total Chunks: {num_chunks}")
     print("\nBeginning...\n")
-    print(f"Progress: 0.00%")
+    print(f"Progress: 0% Complete")
 
     # Track start time for estimated completion
     start_time = time.time()
 
-    # Split audio into chunks and process
-    for audio_chunk, chunk_index, total_chunks in split_audio(file_path):
-        # Transcribe chunk
-        try:
-            chunk_transcription = recognizer.recognize_sphinx(audio_chunk)
-            transcription += chunk_transcription + " "
-            
-            # Calculate progress
-            progress = (chunk_index + 1) / total_chunks * 100
-
-            # Calculate elapsed time and estimated time remaining
-            elapsed_time = time.time() - start_time
-            avg_time_per_chunk = elapsed_time / (chunk_index + 1)
-            remaining_time = avg_time_per_chunk * (total_chunks - (chunk_index + 1))
-            
-            # Display progress with estimated time remaining in a readable format
-            if chunk_index > 0:  # Skip estimated time for the first progress update
-                print(f"Progress: {progress:.2f}% - {format_time(remaining_time)}")
-            else:
-                print(f"Progress: {progress:.2f}%")
+    # Split audio into chunks and process in parallel
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_chunk = {executor.submit(transcribe_chunk, audio_chunk, chunk_index): (audio_chunk, chunk_index) 
+                           for audio_chunk, chunk_index, _ in split_audio(file_path)}
         
-        except sr.UnknownValueError:
-            print(f"Chunk {chunk_index + 1}: PocketSphinx could not understand the audio")
-        except sr.RequestError as e:
-            print(f"Chunk {chunk_index + 1}: Could not request results from PocketSphinx; {e}")
-        except Exception as e:
-            print(f"Error in chunk {chunk_index + 1}: {e}")
+        for future in concurrent.futures.as_completed(future_to_chunk):
+            chunk_transcription, chunk_index = future.result()
+            transcription[chunk_index] = chunk_transcription  # Store result in the correct order
+
+            # Calculate progress
+            progress = (chunk_index + 1) / num_chunks * 100
+
+            # Display progress as percentage of transcription completed
+            print(f"Progress: {progress:.2f}% Complete")
 
     # Save transcription to output file
-    if transcription:
+    complete_transcription = " ".join([t for t in transcription if t is not None])
+    if complete_transcription:
         with open(output_file_path, 'w') as f:
-            f.write(transcription)
+            f.write(complete_transcription)
         print(f"Transcription successfully saved to: {os.path.basename(output_file_path)}")
     else:
         print("No transcription available.")
-
 
 transcribe_audio(audio_file_path, output_file_path)

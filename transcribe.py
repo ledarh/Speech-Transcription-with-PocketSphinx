@@ -14,15 +14,16 @@
 import os
 import speech_recognition as sr
 import time
+import concurrent.futures
 
 # Path to the PocketSphinx repo
-pocketsphinx_repo_path = 'C:/pocketsphinx'
+pocketsphinx_repo_path = '[path to pocketsphinx repo]'
 
 # Path to the WAV file you want to transcribe
-audio_file_path = 'C:/Users/ledar/positions/Transcribe/testf.wav'
+audio_file_path = '[.wav file path]'
 
 # Path where the transcription will be saved
-output_file_path = 'C:/Users/ledar/positions/Transcribe/my_transcription.txt'
+output_file_path = 'my_transcription.txt'
 
 
 
@@ -68,7 +69,8 @@ def transcribe_chunk(audio_chunk, chunk_index):
 # Core function to parallelize transcription
 def transcribe_audio(file_path, output_file_path):
     transcription = [None] * 100  # Reserve space for chunk transcription (max 100 chunks)
-
+    chunks_processed = 0  # Counter for processed chunks
+    
     # Initialization information
     with sr.AudioFile(file_path) as source:
         audio_duration = source.DURATION  # Duration in seconds
@@ -80,11 +82,7 @@ def transcribe_audio(file_path, output_file_path):
     print(f"Transcription will be saved to: {os.path.basename(output_file_path)}")
     print(f"Total Chunks: {num_chunks}")
     print("\nBeginning...\n")
-    print(f"Progress: 0% Complete")
-
-    # Track start time for estimated completion
-    start_time = time.time()
-
+    
     # Split audio into chunks and process in parallel
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future_to_chunk = {executor.submit(transcribe_chunk, audio_chunk, chunk_index): (audio_chunk, chunk_index) 
@@ -94,11 +92,14 @@ def transcribe_audio(file_path, output_file_path):
             chunk_transcription, chunk_index = future.result()
             transcription[chunk_index] = chunk_transcription  # Store result in the correct order
 
-            # Calculate progress
-            progress = (chunk_index + 1) / num_chunks * 100
+            # Increment the processed chunk counter
+            chunks_processed += 1
 
-            # Display progress as percentage of transcription completed
-            print(f"Progress: {progress:.2f}% Complete")
+            # Calculate overall progress based on chunks processed
+            overall_progress = (chunks_processed / num_chunks) * 100
+
+            # Display progress for each chunk completed
+            print(f"Chunk {chunk_index + 1} Complete - {overall_progress:.2f}%")
 
     # Save transcription to output file
     complete_transcription = " ".join([t for t in transcription if t is not None])

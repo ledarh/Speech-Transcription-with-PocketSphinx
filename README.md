@@ -3,6 +3,8 @@
 
 This Python script uses the PocketSphinx recognizer from CMU Sphinx to transcribe audio files into text. The script is designed to handle audio chunking for efficient processing and provides real-time progress and estimated completion time as the transcription is performed.
 
+Now 70% faster with parallelization!
+
 ## Description
 
 This script transcribes .wav audio files by:
@@ -20,6 +22,8 @@ This script transcribes .wav audio files by:
 * Estimated remaining time calculation.
 
 * Handles audio chunking for large files to improve processing efficiency.
+
+Note: the script will seem to hang when a transcription first begins and reads `Beginning...` do not be alarmed. This happens because many threads have taken chunks to process. They will return at relatively the same time and you'll get a number of completion readouts.
 
 
 ## Installation

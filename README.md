@@ -3,7 +3,7 @@
 
 This Python script uses the PocketSphinx recognizer from CMU Sphinx to transcribe audio files into text. The script is designed to handle audio chunking for efficient processing and provides real-time progress and estimated completion time as the transcription is performed.
 
-Now with 70% faster with parallelization!
+Now 70% faster with parallelization!
 
 ## Description
 
